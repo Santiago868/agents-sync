@@ -1,0 +1,19 @@
+{
+  "name": "config-hub",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/figlet": "^1.7.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.87",
+    "@opentui/react": "^0.1.87",
+    "figlet": "^1.11.0",
+    "simple-git": "^3.33.0"
+  }
+}
