@@ -1,5 +1,31 @@
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import simpleGit from "simple-git";
 import type { FileEntry } from "./config";
+
+const AUTH_PATTERNS = [
+  "authentication failed",
+  "could not read username",
+  "permission denied",
+  "repository not found",
+  "fatal: could not read from remote",
+  "host key verification failed",
+  "invalid credentials",
+  "401",
+  "403",
+];
+
+function isAuthError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return AUTH_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+export class GitAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GitAuthError";
+  }
+}
 
 export interface CloneOrPullResult {
   cloned: boolean;
@@ -15,7 +41,17 @@ export async function cloneOrPull(
 
   if (!exists) {
     const git = simpleGit();
-    await git.clone(remoteUrl, localPath);
+    try {
+      await git.clone(remoteUrl, localPath);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isAuthError(message)) {
+        throw new GitAuthError(
+          "Authentication failed. Ensure your Git credentials (SSH key or access token) are configured for this repository."
+        );
+      }
+      throw err;
+    }
     return { cloned: true, pulled: false, conflicts: [] };
   }
 
@@ -25,6 +61,11 @@ export async function cloneOrPull(
     return { cloned: false, pulled: true, conflicts: [] };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    if (isAuthError(message)) {
+      throw new GitAuthError(
+        "Authentication failed during pull. Check your Git credentials."
+      );
+    }
     const conflicts: string[] = [];
     const match = message.match(/CONFLICTS:([\s\S]*)/);
     if (match?.[1]) {
@@ -46,7 +87,17 @@ export async function commitAndPush(
   const git = simpleGit(repoPath);
   await git.add(files);
   await git.commit(message);
-  await git.push();
+  try {
+    await git.push();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isAuthError(msg)) {
+      throw new GitAuthError(
+        "Authentication failed during push. Check your Git credentials."
+      );
+    }
+    throw err;
+  }
 }
 
 export async function getRepoFileTree(repoPath: string): Promise<FileEntry[]> {
@@ -67,14 +118,14 @@ export async function getRepoFileTree(repoPath: string): Promise<FileEntry[]> {
       // Top-level file
       if (!seen.has(filePath)) {
         seen.add(filePath);
-        entries.push({ name: filePath, isDirectory: false, path: filePath });
+        entries.push({ name: filePath, isDirectory: false, path: filePath, source: "remote" });
       }
     } else {
       // Nested — show as folder
       const dirName = parts[0] ?? filePath;
       if (!seen.has(dirName)) {
         seen.add(dirName);
-        entries.push({ name: dirName, isDirectory: true, path: dirName });
+        entries.push({ name: dirName, isDirectory: true, path: dirName, source: "remote" });
       }
     }
   }
@@ -110,6 +161,83 @@ export async function getFilesInDir(
         name: topName,
         isDirectory: parts.length > 1,
         path: `${dirPath}/${topName}`,
+        source: "remote",
+      });
+    }
+  }
+
+  return entries;
+}
+
+const IGNORED_NAMES = new Set([
+  ".git",
+  ".agentrc.json",
+  "node_modules",
+  ".DS_Store",
+  "bun.lockb",
+]);
+
+async function walkDir(dir: string, prefix: string): Promise<string[]> {
+  const results: string[] = [];
+  let dirents;
+  try {
+    dirents = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const dirent of dirents) {
+    if (dirent.name.startsWith(".") || IGNORED_NAMES.has(dirent.name)) continue;
+    const rel = prefix ? `${prefix}/${dirent.name}` : dirent.name;
+    if (dirent.isDirectory()) {
+      results.push(...(await walkDir(join(dir, dirent.name), rel)));
+    } else if (dirent.name.toLowerCase().endsWith(".md")) {
+      results.push(rel);
+    }
+  }
+  return results;
+}
+
+export async function getLocalFiles(
+  cwd: string,
+  mappedFolder: string,
+  subdir?: string
+): Promise<FileEntry[]> {
+  const allPaths = await walkDir(cwd, "");
+
+  const subdirRelative = subdir && subdir.startsWith(mappedFolder + "/")
+    ? subdir.slice(mappedFolder.length + 1)
+    : subdir && subdir === mappedFolder
+      ? ""
+      : null;
+
+  const seen = new Set<string>();
+  const entries: FileEntry[] = [];
+
+  for (const filePath of allPaths) {
+    if (subdirRelative !== null && subdirRelative !== "") {
+      if (!filePath.startsWith(subdirRelative + "/")) continue;
+    }
+
+    const fullPath = mappedFolder ? `${mappedFolder}/${filePath}` : filePath;
+
+    let displayPath: string;
+    if (subdir) {
+      if (!fullPath.startsWith(subdir + "/")) continue;
+      displayPath = fullPath.slice(subdir.length + 1);
+    } else {
+      displayPath = fullPath;
+    }
+
+    const parts = displayPath.split("/");
+    const topName = parts[0] ?? displayPath;
+
+    if (!seen.has(topName)) {
+      seen.add(topName);
+      entries.push({
+        name: topName,
+        isDirectory: parts.length > 1,
+        path: subdir ? `${subdir}/${topName}` : topName,
+        source: "local",
       });
     }
   }

@@ -1,4 +1,8 @@
+import { dirname } from "node:path";
+import { mkdir } from "node:fs/promises";
+
 export async function copyFile(src: string, dest: string): Promise<void> {
+  await mkdir(dirname(dest), { recursive: true });
   await Bun.write(dest, Bun.file(src));
 }
 

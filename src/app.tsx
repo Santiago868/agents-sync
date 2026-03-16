@@ -1,4 +1,4 @@
-import { useKeyboard } from "@opentui/react";
+import { useKeyboard, useRenderer } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 import { basename, join } from "node:path";
 import { CommitPrompt } from "./components/CommitPrompt";
@@ -9,6 +9,7 @@ import { Settings } from "./components/Settings";
 import {
   type GlobalConfig,
   type LocalConfig,
+  getLocalRelativePath,
   getRepoCachePath,
   loadGlobalConfig,
   loadLocalConfig,
@@ -16,7 +17,7 @@ import {
   saveLocalConfig,
 } from "./utils/config";
 import { copyFile, fileExists } from "./utils/fs";
-import { cloneOrPull, commitAndPush } from "./utils/git";
+import { GitAuthError, cloneOrPull, commitAndPush } from "./utils/git";
 
 type View = "loading" | "settings" | "mapping" | "explorer";
 type Modal = "none" | "commit" | "conflict";
@@ -27,27 +28,38 @@ export function App() {
   const [globalConfig, setGlobalConfig] = useState<GlobalConfig | null>(null);
   const [localConfig, setLocalConfig] = useState<LocalConfig | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedFileSource, setSelectedFileSource] = useState<"local" | "remote" | "both">("both");
   const [statusMessage, setStatusMessage] = useState("Initializing...");
   const [conflictFiles, setConflictFiles] = useState<string[]>([]);
   const [mappingFolders, setMappingFolders] = useState<string[]>([]);
   const [mappingIndex, setMappingIndex] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const isOperating = useRef(false);
+  const renderer = useRenderer();
 
   const repoCachePath = getRepoCachePath();
 
   async function initRepo(config: GlobalConfig) {
     setStatusMessage("Syncing central repository...");
-    const result = await cloneOrPull(config.remoteUrl, repoCachePath);
-    if (result.cloned) setStatusMessage("Repository cloned.");
-    else if (result.pulled) setStatusMessage("Repository updated.");
+    try {
+      const result = await cloneOrPull(config.remoteUrl, repoCachePath);
+      if (result.cloned) setStatusMessage("Repository cloned.");
+      else if (result.pulled) setStatusMessage("Repository updated.");
 
-    if (result.conflicts.length > 0) {
-      setConflictFiles(result.conflicts);
-      setModal("conflict");
-      setStatusMessage("Merge conflicts detected.");
-    } else {
-      setStatusMessage("Ready.");
+      if (result.conflicts.length > 0) {
+        setConflictFiles(result.conflicts);
+        setModal("conflict");
+        setStatusMessage("Merge conflicts detected.");
+      } else {
+        setStatusMessage("Ready.");
+      }
+    } catch (err) {
+      if (err instanceof GitAuthError) {
+        setStatusMessage(`Auth failed: ${err.message}`);
+        setView("settings");
+      } else {
+        setStatusMessage(`Git error: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
@@ -82,7 +94,8 @@ export function App() {
 
     // [Q] / Escape — quit
     if (key.name === "q" || key.name === "escape") {
-      process.exit(0);
+      renderer.destroy();
+      return;
     }
 
     // [D] Diff — already shown in right pane, just ensure a file is selected
@@ -97,12 +110,17 @@ export function App() {
         setStatusMessage("Select a file to pull.");
         return;
       }
+      if (selectedFileSource === "local") {
+        setStatusMessage("File only exists locally — nothing to pull.");
+        return;
+      }
       isOperating.current = true;
       try {
+        const localRelative = getLocalRelativePath(selectedFile, localConfig?.mappedFolder ?? null);
         const centralPath = join(repoCachePath, selectedFile);
-        const localPath = join(process.cwd(), basename(selectedFile));
+        const localPath = join(process.cwd(), localRelative);
         await copyFile(centralPath, localPath);
-        setStatusMessage(`Pulled ${basename(selectedFile)} to local project.`);
+        setStatusMessage(`Pulled ${localRelative} to local project.`);
       } catch (err) {
         setStatusMessage(`Pull failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
@@ -117,9 +135,10 @@ export function App() {
         setStatusMessage("Select a file to push.");
         return;
       }
-      const localPath = join(process.cwd(), basename(selectedFile));
+      const localRelative = getLocalRelativePath(selectedFile, localConfig?.mappedFolder ?? null);
+      const localPath = join(process.cwd(), localRelative);
       if (!(await fileExists(localPath))) {
-        setStatusMessage(`No local file found: ${basename(selectedFile)}`);
+        setStatusMessage(`No local file found: ${localRelative}`);
         return;
       }
       setModal("commit");
@@ -175,25 +194,26 @@ export function App() {
     setModal("none");
     setStatusMessage("Pushing changes...");
     try {
-      const localPath = join(process.cwd(), basename(selectedFile));
-      const mappedFolder = localConfig?.mappedFolder;
-      const destRelative = mappedFolder
-        ? `${mappedFolder}/${basename(selectedFile)}`
-        : selectedFile;
-      const centralPath = join(repoCachePath, destRelative);
+      const localRelative = getLocalRelativePath(selectedFile, localConfig?.mappedFolder ?? null);
+      const localPath = join(process.cwd(), localRelative);
+      const centralPath = join(repoCachePath, selectedFile);
       await copyFile(localPath, centralPath);
       await cloneOrPull(globalConfig!.remoteUrl, repoCachePath);
-      await commitAndPush(repoCachePath, message, [destRelative]);
-      setStatusMessage(`Pushed: ${basename(selectedFile)}`);
+      await commitAndPush(repoCachePath, message, [selectedFile]);
+      setStatusMessage(`Pushed: ${localRelative}`);
       setRefreshKey((k) => k + 1);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("conflict") || msg.includes("CONFLICT")) {
-        setConflictFiles([destRelativeFromErr(selectedFile)]);
-        setModal("conflict");
-        setStatusMessage("Push failed: merge conflicts detected.");
+      if (err instanceof GitAuthError) {
+        setStatusMessage(`Auth failed: ${err.message}`);
       } else {
-        setStatusMessage(`Push failed: ${msg}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("conflict") || msg.includes("CONFLICT")) {
+          setConflictFiles([destRelativeFromErr(selectedFile)]);
+          setModal("conflict");
+          setStatusMessage("Push failed: merge conflicts detected.");
+        } else {
+          setStatusMessage(`Push failed: ${msg}`);
+        }
       }
     } finally {
       isOperating.current = false;
@@ -201,8 +221,7 @@ export function App() {
   }
 
   function destRelativeFromErr(file: string): string {
-    const mappedFolder = localConfig?.mappedFolder;
-    return mappedFolder ? `${mappedFolder}/${basename(file)}` : file;
+    return file; // selectedFile already includes mappedFolder prefix
   }
 
   async function handleConflictRetry() {
@@ -234,7 +253,7 @@ export function App() {
         alignItems="center"
         gap={2}
       >
-        <ascii-font text="ConfigHub" font="tiny" color="#89b4fa" />
+        <ascii-font text="Agents Sync" font="tiny" color="#89b4fa" />
         <text fg="#6c7086">Team Agents &amp; Skills Manager</text>
       </box>
 
@@ -288,7 +307,10 @@ export function App() {
               mappedFolder={localConfig?.mappedFolder ?? null}
               selectedFile={selectedFile}
               focused={modal === "none"}
-              onSelectFile={setSelectedFile}
+              onSelectFile={(path, source) => {
+                setSelectedFile(path);
+                if (source) setSelectedFileSource(source);
+              }}
               onMappingRequired={(folders) => {
                 setMappingFolders(folders);
                 setMappingIndex(0);
@@ -301,7 +323,7 @@ export function App() {
               }}
               refreshKey={refreshKey}
             />
-            <DiffViewer selectedFile={selectedFile} />
+            <DiffViewer selectedFile={selectedFile} mappedFolder={localConfig?.mappedFolder ?? null} />
           </box>
         )}
 

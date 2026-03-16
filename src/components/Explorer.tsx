@@ -2,13 +2,13 @@ import { useKeyboard } from "@opentui/react";
 import { useEffect, useState } from "react";
 import type { FileEntry } from "../utils/config";
 import { getRepoCachePath, saveLocalConfig } from "../utils/config";
-import { getFilesInDir, getRepoFileTree } from "../utils/git";
+import { getFilesInDir, getLocalFiles, getRepoFileTree } from "../utils/git";
 
 interface ExplorerProps {
   mappedFolder: string | null;
   selectedFile: string | null;
   focused: boolean;
-  onSelectFile: (path: string | null) => void;
+  onSelectFile: (path: string | null, source?: "local" | "remote" | "both") => void;
   onMappingRequired: (folders: string[]) => void;
   onMapped: (folder: string) => void;
   refreshKey: number;
@@ -34,17 +34,17 @@ export function Explorer({
     async function load() {
       setLoading(true);
       try {
-        let items: FileEntry[];
+        let remoteItems: FileEntry[];
         const basePath = currentPath || "";
         if (basePath) {
-          items = await getFilesInDir(repoCachePath, basePath);
+          remoteItems = await getFilesInDir(repoCachePath, basePath);
         } else {
-          items = await getRepoFileTree(repoCachePath);
+          remoteItems = await getRepoFileTree(repoCachePath);
         }
 
         // If no mapping yet and we're at root, detect folders and prompt
         if (!mappedFolder && !currentPath) {
-          const folders = items
+          const folders = remoteItems
             .filter((e) => e.isDirectory)
             .map((e) => e.name);
           if (folders.length > 0) {
@@ -52,10 +52,36 @@ export function Explorer({
           }
         }
 
+        // Merge with local files if we have a mapping
+        let items: FileEntry[];
+        if (mappedFolder) {
+          const localItems = await getLocalFiles(
+            process.cwd(),
+            mappedFolder,
+            basePath || mappedFolder
+          );
+
+          const merged = new Map<string, FileEntry>();
+          for (const entry of remoteItems) {
+            merged.set(entry.path, entry);
+          }
+          for (const localEntry of localItems) {
+            const existing = merged.get(localEntry.path);
+            if (existing) {
+              existing.source = "both";
+            } else {
+              merged.set(localEntry.path, localEntry);
+            }
+          }
+          items = Array.from(merged.values());
+        } else {
+          items = remoteItems;
+        }
+
         // Add ".." nav entry when inside a subdirectory
         if (currentPath) {
           items = [
-            { name: "..", isDirectory: true, path: ".." },
+            { name: "..", isDirectory: true, path: "..", source: "both" },
             ...items,
           ];
         }
@@ -77,7 +103,7 @@ export function Explorer({
     const entry = entries[selectedIndex];
     if (!entry) return;
     if (!entry.isDirectory && entry.name !== "..") {
-      onSelectFile(entry.path);
+      onSelectFile(entry.path, entry.source);
     }
   }, [selectedIndex, entries]);
 
@@ -159,6 +185,12 @@ export function Explorer({
               {entry.isDirectory && entry.name !== ".." ? "📁 " : "  "}
               {entry.name}
             </text>
+            {!entry.isDirectory && entry.source === "local" && (
+              <text fg="#a6e3a1"> L</text>
+            )}
+            {!entry.isDirectory && entry.source === "remote" && (
+              <text fg="#f38ba8"> R</text>
+            )}
           </box>
         ))
       )}

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { basename, join } from "node:path";
-import { getRepoCachePath } from "../utils/config";
+import { join } from "node:path";
+import { getLocalRelativePath, getRepoCachePath } from "../utils/config";
 import { fileExists, generateDiff } from "../utils/fs";
 
 interface DiffViewerProps {
   selectedFile: string | null;
+  mappedFolder: string | null;
 }
 
-export function DiffViewer({ selectedFile }: DiffViewerProps) {
+export function DiffViewer({ selectedFile, mappedFolder }: DiffViewerProps) {
   const [diffContent, setDiffContent] = useState<string>("");
   const [status, setStatus] = useState<string>("Select a file from the left pane.");
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,8 @@ export function DiffViewer({ selectedFile }: DiffViewerProps) {
       try {
         const repoCachePath = getRepoCachePath();
         const centralPath = join(repoCachePath, selectedFile);
-        const localPath = join(process.cwd(), basename(selectedFile));
+        const localRelative = getLocalRelativePath(selectedFile, mappedFolder);
+        const localPath = join(process.cwd(), localRelative);
 
         const [centralExists, localExists] = await Promise.all([
           fileExists(centralPath),
@@ -61,7 +63,7 @@ export function DiffViewer({ selectedFile }: DiffViewerProps) {
     }
 
     computeDiff();
-  }, [selectedFile]);
+  }, [selectedFile, mappedFolder]);
 
   return (
     <box

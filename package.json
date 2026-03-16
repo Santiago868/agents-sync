@@ -1,5 +1,5 @@
 {
-  "name": "config-hub",
+  "name": "agents-sync",
   "version": "1.0.0",
   "module": "index.ts",
   "type": "module",

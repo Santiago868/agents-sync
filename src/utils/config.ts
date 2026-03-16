@@ -10,6 +10,7 @@ export interface FileEntry {
   name: string;
   isDirectory: boolean;
   path: string;
+  source: "local" | "remote" | "both";
 }
 
 const globalConfigPath = `${Bun.env.HOME}/.agents-cli-config.json`;
@@ -37,4 +38,11 @@ export async function loadLocalConfig(): Promise<LocalConfig | null> {
 
 export async function saveLocalConfig(config: LocalConfig): Promise<void> {
   await Bun.write(localConfigPath, JSON.stringify(config, null, 2));
+}
+
+export function getLocalRelativePath(selectedFile: string, mappedFolder: string | null): string {
+  if (mappedFolder && selectedFile.startsWith(mappedFolder + "/")) {
+    return selectedFile.slice(mappedFolder.length + 1);
+  }
+  return selectedFile;
 }
