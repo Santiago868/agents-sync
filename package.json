@@ -1,11 +1,19 @@
 {
   "name": "config-hub",
+  "version": "1.0.0",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "bin": {
+    "agents-sync": "./index.ts"
+  },
+  "scripts": {
+    "dev": "bun run index.ts",
+    "build": "bun build ./index.ts --outfile ./dist/index.js --target bun"
+  },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/figlet": "^1.7.0"
+    "@types/figlet": "^1.7.0",
+    "@types/react": "^19.2.14"
   },
   "peerDependencies": {
     "typescript": "^5"
