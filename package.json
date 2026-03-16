@@ -1,14 +1,20 @@
 {
   "name": "agents-sync",
   "version": "1.0.0",
+  "description": "Terminal CLI dashboard for managing and syncing team AGENT.MD and SKILL.MD files with a central Git repository",
   "module": "index.ts",
   "type": "module",
   "bin": {
     "agents-sync": "./index.ts"
   },
+  "files": [
+    "index.ts",
+    "src/",
+    "tsconfig.json"
+  ],
   "scripts": {
     "dev": "bun run index.ts",
-    "build": "bun build ./index.ts --outfile ./dist/index.js --target bun"
+    "build": "bun build ./index.ts --compile --outfile dist/agents-sync"
   },
   "devDependencies": {
     "@types/bun": "latest",

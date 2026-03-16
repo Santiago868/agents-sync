@@ -4,20 +4,65 @@ A terminal-based CLI dashboard for managing and syncing team AGENT.MD and SKILL.
 
 ## Install
 
+### From GitHub (recommended)
+
+Install directly from GitHub — no need to clone the repo:
+
+```bash
+bun install -g github:Santiago868/agents-sync
+```
+
+Now run `agents-sync` from any directory:
+
+```bash
+agents-sync
+```
+
+#### Updating
+
+When updates are pushed to GitHub, re-run the same install command:
+
+```bash
+bun install -g github:Santiago868/agents-sync
+```
+
+#### Uninstall
+
+```bash
+bun remove -g agents-sync
+```
+
+### From local clone
+
+If you prefer to clone first:
+
+```bash
+git clone https://github.com/Santiago868/agents-sync.git
+cd config-hub
+bun install
+bun install -g .
+```
+
+To update, pull and re-link:
+
+```bash
+git pull
+bun install -g .
+```
+
+### Compiled binary (no Bun required on target machine)
+
+```bash
+bun run build
+```
+
+This produces a standalone binary at `dist/agents-sync`. Copy it anywhere on your `$PATH`.
+
+### Development
+
 ```bash
 bun install
-```
-
-## Run
-
-```bash
 bun run dev
-```
-
-Or directly:
-
-```bash
-bun run index.ts
 ```
 
 ## First-Time Setup
@@ -74,7 +119,7 @@ bun run index.ts
 bun run build
 ```
 
-Outputs to `dist/index.js`. The `package.json` `bin` field maps `agents-sync` to the entry point for global CLI installation.
+Compiles a standalone binary to `dist/agents-sync` — no Bun or Node.js needed on the target machine. The `package.json` `bin` field maps `agents-sync` for global CLI installation via `bun install -g .`.
 
 ## Tech Stack
 
