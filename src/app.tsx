@@ -190,9 +190,17 @@ export function App() {
   async function handleSettingsSave(url: string) {
     const config: GlobalConfig = { remoteUrl: url };
     await saveGlobalConfig(config);
+
+    // If remote URL changed, clear stale folder mapping
+    if (globalConfig?.remoteUrl && globalConfig.remoteUrl !== url) {
+      setLocalConfig(null);
+      await saveLocalConfig({ mappedFolder: "" });
+    }
+
     setGlobalConfig(config);
     setView("explorer");
     await initRepo(config);
+    setRefreshKey((k) => k + 1);
   }
 
   async function handleCommit(message: string) {

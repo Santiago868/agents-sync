@@ -56,6 +56,27 @@ export async function cloneOrPull(
   }
 
   const git = simpleGit(localPath);
+
+  // Check if remote URL has changed
+  const currentRemote = (await git.remote(['get-url', 'origin']))?.trim();
+  if (currentRemote !== remoteUrl) {
+    // Remote changed — delete stale clone and re-clone
+    await Bun.$`rm -rf ${localPath}`;
+    const freshGit = simpleGit();
+    try {
+      await freshGit.clone(remoteUrl, localPath);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isAuthError(message)) {
+        throw new GitAuthError(
+          "Authentication failed. Ensure your Git credentials (SSH key or access token) are configured for this repository."
+        );
+      }
+      throw err;
+    }
+    return { cloned: true, pulled: false, conflicts: [] };
+  }
+
   try {
     await git.pull();
     return { cloned: false, pulled: true, conflicts: [] };
