@@ -177,6 +177,10 @@ const IGNORED_NAMES = new Set([
   "bun.lockb",
 ]);
 
+const ALLOWED_DOT_DIRS = new Set([".cursor", ".claude"]);
+const ALLOWED_DOT_FILES = new Set([".cursorrules"]);
+const AGENT_EXTENSIONS = [".md", ".mdc", ".json"];
+
 async function walkDir(dir: string, prefix: string): Promise<string[]> {
   const results: string[] = [];
   let dirents;
@@ -186,12 +190,17 @@ async function walkDir(dir: string, prefix: string): Promise<string[]> {
     return results;
   }
   for (const dirent of dirents) {
-    if (dirent.name.startsWith(".") || IGNORED_NAMES.has(dirent.name)) continue;
+    if (IGNORED_NAMES.has(dirent.name)) continue;
     const rel = prefix ? `${prefix}/${dirent.name}` : dirent.name;
     if (dirent.isDirectory()) {
+      if (dirent.name.startsWith(".") && !ALLOWED_DOT_DIRS.has(dirent.name)) continue;
       results.push(...(await walkDir(join(dir, dirent.name), rel)));
-    } else if (dirent.name.toLowerCase().endsWith(".md")) {
-      results.push(rel);
+    } else {
+      if (dirent.name.startsWith(".") && !ALLOWED_DOT_FILES.has(dirent.name)) continue;
+      const lower = dirent.name.toLowerCase();
+      if (AGENT_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+        results.push(rel);
+      }
     }
   }
   return results;

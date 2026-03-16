@@ -83,6 +83,13 @@ export function App() {
 
   useKeyboard(async (key) => {
     if (modal !== "none") return;
+
+    // [Esc] Cancel settings — return to explorer if we have a config
+    if (view === "settings" && key.name === "escape" && globalConfig) {
+      setView("explorer");
+      return;
+    }
+
     if (view !== "explorer") return;
     if (isOperating.current) return;
 
@@ -269,6 +276,11 @@ export function App() {
           <Settings
             currentUrl={globalConfig?.remoteUrl ?? ""}
             onSave={handleSettingsSave}
+            onCancel={() => {
+              if (globalConfig) {
+                setView("explorer");
+              }
+            }}
           />
         )}
 

@@ -1,21 +1,13 @@
-import { useKeyboard } from "@opentui/react";
-import { useRef, useState } from "react";
-import type { InputRenderable } from "@opentui/core";
+import { useState } from "react";
 
 interface SettingsProps {
   currentUrl: string;
   onSave: (url: string) => void;
+  onCancel: () => void;
 }
 
-export function Settings({ currentUrl, onSave }: SettingsProps) {
+export function Settings({ currentUrl, onSave, onCancel }: SettingsProps) {
   const [value, setValue] = useState(currentUrl);
-  const inputRef = useRef<InputRenderable>(null);
-
-  useKeyboard((key) => {
-    if (key.name === "return" && value.trim()) {
-      onSave(value.trim());
-    }
-  });
 
   return (
     <box
@@ -41,9 +33,11 @@ export function Settings({ currentUrl, onSave }: SettingsProps) {
           <text fg="#a6adc8">Git Remote URL:</text>
           <box style={{ border: true, borderColor: "#89b4fa" }}>
             <input
-              ref={inputRef}
               value={value}
               onChange={(v) => setValue(v)}
+              onSubmit={() => {
+                if (value.trim()) onSave(value.trim());
+              }}
               focused
               width={52}
               placeholder="https://github.com/yourteam/agents-repo.git"
