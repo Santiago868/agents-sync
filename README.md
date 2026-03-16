@@ -1,4 +1,4 @@
-# ConfigHub
+# Agents Sync
 
 A terminal-based CLI dashboard for managing and syncing team AGENT.MD and SKILL.MD files with a central Git repository. Built with [OpenTUI](https://github.com/anomalyco/opentui) React and [Bun](https://bun.sh).
 
@@ -45,7 +45,7 @@ bun run index.ts
 
 ### Layout
 
-- **Header**: ASCII art "ConfigHub" title
+- **Header**: ASCII art "Agents Sync" title
 - **Left pane**: File explorer showing the central repo contents
 - **Right pane**: Live diff viewer comparing your local file vs the central repo version
 - **Footer**: Hotkey hints and status messages

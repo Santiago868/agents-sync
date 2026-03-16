@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "config-hub",
+      "name": "agents-sync",
       "dependencies": {
         "@opentui/core": "^0.1.87",
         "@opentui/react": "^0.1.87",
