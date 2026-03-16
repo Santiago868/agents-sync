@@ -34,9 +34,10 @@ export function Settings({ currentUrl, onSave, onCancel }: SettingsProps) {
           <box style={{ border: true, borderColor: "#89b4fa" }}>
             <input
               value={value}
-              onChange={(v) => setValue(v)}
-              onSubmit={() => {
-                if (value.trim()) onSave(value.trim());
+              onInput={(v) => setValue(v)}
+              onSubmit={(v) => {
+                const text = typeof v === 'string' ? v : value;
+                if (text.trim()) onSave(text.trim());
               }}
               focused
               width={52}

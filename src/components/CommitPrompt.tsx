@@ -41,7 +41,7 @@ export function CommitPrompt({ filename, onCommit, onCancel }: CommitPromptProps
         <box style={{ border: true, borderColor: "#89b4fa" }}>
           <input
             value={value}
-            onChange={(v) => setValue(v)}
+            onInput={(v) => setValue(v)}
             focused
             width={52}
             placeholder="Describe your changes..."
