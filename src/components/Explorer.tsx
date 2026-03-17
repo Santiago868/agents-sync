@@ -8,7 +8,7 @@ interface ExplorerProps {
   mappedFolder: string | null;
   selectedFile: string | null;
   focused: boolean;
-  onSelectFile: (path: string | null, source?: "local" | "remote" | "both") => void;
+  onSelectFile: (path: string | null, source?: "local" | "remote" | "both", isDirectory?: boolean) => void;
   onMappingRequired: (folders: string[]) => void;
   onMapped: (folder: string) => void;
   refreshKey: number;
@@ -102,8 +102,8 @@ export function Explorer({
     if (entries.length === 0) return;
     const entry = entries[selectedIndex];
     if (!entry) return;
-    if (!entry.isDirectory && entry.name !== "..") {
-      onSelectFile(entry.path, entry.source);
+    if (entry.name !== "..") {
+      onSelectFile(entry.path, entry.source, entry.isDirectory);
     }
   }, [selectedIndex, entries]);
 
@@ -185,10 +185,10 @@ export function Explorer({
               {entry.isDirectory && entry.name !== ".." ? "📁 " : "  "}
               {entry.name}
             </text>
-            {!entry.isDirectory && entry.source === "local" && (
+            {entry.source === "local" && entry.name !== ".." && (
               <text fg="#a6e3a1"> L</text>
             )}
-            {!entry.isDirectory && entry.source === "remote" && (
+            {entry.source === "remote" && entry.name !== ".." && (
               <text fg="#f38ba8"> R</text>
             )}
           </box>

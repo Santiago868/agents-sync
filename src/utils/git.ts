@@ -135,6 +135,9 @@ export async function getRepoFileTree(repoPath: string): Promise<FileEntry[]> {
 
   for (const filePath of paths) {
     const parts = filePath.split("/");
+    const fileName = parts[parts.length - 1] ?? "";
+    if (fileName.toLowerCase().startsWith("readme")) continue;
+
     if (parts.length === 1) {
       // Top-level file
       if (!seen.has(filePath)) {
@@ -175,6 +178,8 @@ export async function getFilesInDir(
 
     const parts = relative.split("/");
     const topName = parts[0] ?? relative;
+    const fileName = parts[parts.length - 1] ?? "";
+    if (fileName.toLowerCase().startsWith("readme")) continue;
 
     if (!seen.has(topName)) {
       seen.add(topName);
@@ -219,6 +224,7 @@ async function walkDir(dir: string, prefix: string): Promise<string[]> {
     } else {
       if (dirent.name.startsWith(".") && !ALLOWED_DOT_FILES.has(dirent.name)) continue;
       const lower = dirent.name.toLowerCase();
+      if (lower.startsWith("readme")) continue;
       if (AGENT_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
         results.push(rel);
       }
@@ -273,4 +279,26 @@ export async function getLocalFiles(
   }
 
   return entries;
+}
+
+export async function getLocalFilePaths(
+  cwd: string,
+  mappedFolder: string,
+  dirPath: string
+): Promise<string[]> {
+  const allPaths = await walkDir(cwd, "");
+  const subdirRelative = dirPath.startsWith(mappedFolder + "/")
+    ? dirPath.slice(mappedFolder.length + 1)
+    : dirPath === mappedFolder
+      ? ""
+      : null;
+
+  const results: string[] = [];
+  for (const filePath of allPaths) {
+    if (subdirRelative !== null && subdirRelative !== "") {
+      if (!filePath.startsWith(subdirRelative + "/")) continue;
+    }
+    results.push(`${mappedFolder}/${filePath}`);
+  }
+  return results;
 }

@@ -17,10 +17,11 @@ import {
   saveLocalConfig,
 } from "./utils/config";
 import { copyFile, fileExists } from "./utils/fs";
-import { GitAuthError, cloneOrPull, commitAndPush } from "./utils/git";
+import { GitAuthError, cloneOrPull, commitAndPush, getLocalFilePaths } from "./utils/git";
 
 type View = "loading" | "settings" | "mapping" | "explorer";
 type Modal = "none" | "commit" | "conflict";
+type FocusedPane = "explorer" | "viewer";
 
 export function App() {
   const [view, setView] = useState<View>("loading");
@@ -29,11 +30,14 @@ export function App() {
   const [localConfig, setLocalConfig] = useState<LocalConfig | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedFileSource, setSelectedFileSource] = useState<"local" | "remote" | "both">("both");
+  const [selectedIsDirectory, setSelectedIsDirectory] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Initializing...");
   const [conflictFiles, setConflictFiles] = useState<string[]>([]);
   const [mappingFolders, setMappingFolders] = useState<string[]>([]);
   const [mappingIndex, setMappingIndex] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [focusedPane, setFocusedPane] = useState<FocusedPane>("explorer");
+  const [pendingPushFiles, setPendingPushFiles] = useState<string[]>([]);
   const isOperating = useRef(false);
   const renderer = useRenderer();
 
@@ -93,6 +97,12 @@ export function App() {
     if (view !== "explorer") return;
     if (isOperating.current) return;
 
+    // [Tab] Switch pane focus
+    if (key.name === "tab") {
+      setFocusedPane((p) => (p === "explorer" ? "viewer" : "explorer"));
+      return;
+    }
+
     // [S] Open settings
     if (key.name === "s") {
       setView("settings");
@@ -117,6 +127,10 @@ export function App() {
         setStatusMessage("Select a file to pull.");
         return;
       }
+      if (selectedIsDirectory) {
+        setStatusMessage("Cannot pull a folder — select individual files.");
+        return;
+      }
       if (selectedFileSource === "local") {
         setStatusMessage("File only exists locally — nothing to pull.");
         return;
@@ -139,16 +153,44 @@ export function App() {
     // [U] Update / push to central repo
     if (key.name === "u") {
       if (!selectedFile) {
-        setStatusMessage("Select a file to push.");
+        setStatusMessage("Select a file or folder to push.");
         return;
       }
-      const localRelative = getLocalRelativePath(selectedFile, localConfig?.mappedFolder ?? null);
-      const localPath = join(process.cwd(), localRelative);
-      if (!(await fileExists(localPath))) {
-        setStatusMessage(`No local file found: ${localRelative}`);
-        return;
+
+      const mappedFolder = localConfig?.mappedFolder ?? null;
+
+      if (selectedIsDirectory) {
+        // Folder push — collect all local files in the directory
+        if (!mappedFolder) {
+          setStatusMessage("No folder mapping configured.");
+          return;
+        }
+        isOperating.current = true;
+        try {
+          const files = await getLocalFilePaths(process.cwd(), mappedFolder, selectedFile);
+          if (files.length === 0) {
+            setStatusMessage("No local files found in this folder.");
+            isOperating.current = false;
+            return;
+          }
+          setPendingPushFiles(files);
+          setModal("commit");
+        } catch (err) {
+          setStatusMessage(`Error scanning folder: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          isOperating.current = false;
+        }
+      } else {
+        // Single file push
+        const localRelative = getLocalRelativePath(selectedFile, mappedFolder);
+        const localPath = join(process.cwd(), localRelative);
+        if (!(await fileExists(localPath))) {
+          setStatusMessage(`No local file found: ${localRelative}`);
+          return;
+        }
+        setPendingPushFiles([selectedFile]);
+        setModal("commit");
       }
-      setModal("commit");
       return;
     }
 
@@ -204,18 +246,28 @@ export function App() {
   }
 
   async function handleCommit(message: string) {
-    if (!selectedFile) return;
+    if (pendingPushFiles.length === 0) return;
     isOperating.current = true;
     setModal("none");
     setStatusMessage("Pushing changes...");
     try {
-      const localRelative = getLocalRelativePath(selectedFile, localConfig?.mappedFolder ?? null);
-      const localPath = join(process.cwd(), localRelative);
-      const centralPath = join(repoCachePath, selectedFile);
-      await copyFile(localPath, centralPath);
+      const mappedFolder = localConfig?.mappedFolder ?? null;
+
+      // Copy all files from local to central cache
+      for (const file of pendingPushFiles) {
+        const localRelative = getLocalRelativePath(file, mappedFolder);
+        const localPath = join(process.cwd(), localRelative);
+        const centralPath = join(repoCachePath, file);
+        await copyFile(localPath, centralPath);
+      }
+
       await cloneOrPull(globalConfig!.remoteUrl, repoCachePath);
-      await commitAndPush(repoCachePath, message, [selectedFile]);
-      setStatusMessage(`Pushed: ${localRelative}`);
+      await commitAndPush(repoCachePath, message, pendingPushFiles);
+
+      const label = pendingPushFiles.length === 1
+        ? getLocalRelativePath(pendingPushFiles[0]!, mappedFolder)
+        : `${pendingPushFiles.length} files`;
+      setStatusMessage(`Pushed: ${label}`);
       setRefreshKey((k) => k + 1);
     } catch (err) {
       if (err instanceof GitAuthError) {
@@ -223,7 +275,7 @@ export function App() {
       } else {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("conflict") || msg.includes("CONFLICT")) {
-          setConflictFiles([destRelativeFromErr(selectedFile)]);
+          setConflictFiles(pendingPushFiles);
           setModal("conflict");
           setStatusMessage("Push failed: merge conflicts detected.");
         } else {
@@ -232,11 +284,8 @@ export function App() {
       }
     } finally {
       isOperating.current = false;
+      setPendingPushFiles([]);
     }
-  }
-
-  function destRelativeFromErr(file: string): string {
-    return file; // selectedFile already includes mappedFolder prefix
   }
 
   async function handleConflictRetry() {
@@ -253,7 +302,7 @@ export function App() {
 
   const hotkeys =
     view === "explorer"
-      ? "[S] Settings  [P] Pull  [U] Push  [D] Diff  [R] Refresh  [Q] Quit  ↑↓ Navigate"
+      ? "[S] Settings  [P] Pull  [U] Push  [D] Diff  [R] Refresh  [Tab] Switch Pane  [Q] Quit  ↑↓ Navigate"
       : view === "settings"
         ? "[Enter] Save  [Esc] Cancel"
         : "";
@@ -326,9 +375,10 @@ export function App() {
             <Explorer
               mappedFolder={localConfig?.mappedFolder ?? null}
               selectedFile={selectedFile}
-              focused={modal === "none"}
-              onSelectFile={(path, source) => {
+              focused={modal === "none" && focusedPane === "explorer"}
+              onSelectFile={(path, source, isDirectory) => {
                 setSelectedFile(path);
+                setSelectedIsDirectory(isDirectory ?? false);
                 if (source) setSelectedFileSource(source);
               }}
               onMappingRequired={(folders) => {
@@ -343,16 +393,26 @@ export function App() {
               }}
               refreshKey={refreshKey}
             />
-            <DiffViewer selectedFile={selectedFile} mappedFolder={localConfig?.mappedFolder ?? null} />
+            <DiffViewer
+              selectedFile={selectedFile}
+              selectedIsDirectory={selectedIsDirectory}
+              mappedFolder={localConfig?.mappedFolder ?? null}
+              focused={modal === "none" && focusedPane === "viewer"}
+            />
           </box>
         )}
 
         {/* Modals */}
         {modal === "commit" && selectedFile && (
           <CommitPrompt
-            filename={basename(selectedFile)}
+            filename={selectedIsDirectory ? selectedFile : basename(selectedFile)}
+            files={pendingPushFiles}
+            isDirectory={selectedIsDirectory}
             onCommit={handleCommit}
-            onCancel={() => setModal("none")}
+            onCancel={() => {
+              setModal("none");
+              setPendingPushFiles([]);
+            }}
           />
         )}
 
