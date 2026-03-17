@@ -28,7 +28,7 @@ export function CommitPrompt({ filename, files, isDirectory, onCommit, onCancel 
       left="15%"
       width={70}
       flexDirection="column"
-      style={{ border: true, borderColor: "#f38ba8" }}
+      style={{ border: true, borderColor: "#f38ba8", backgroundColor: "#1e1e2ecc" }}
       padding={2}
       gap={1}
     >
@@ -41,7 +41,7 @@ export function CommitPrompt({ filename, files, isDirectory, onCommit, onCancel 
 
       {isDirectory && files.length > 0 && (
         <box flexDirection="column" marginTop={1}>
-          <text fg="#a6adc8">Files to commit ({files.length}):</text>
+          <text fg="#89b4fa">Files to commit ({files.length}):</text>
           <box
             style={{ border: true, borderColor: "#313244" }}
             flexDirection="column"
@@ -49,7 +49,7 @@ export function CommitPrompt({ filename, files, isDirectory, onCommit, onCancel 
           >
             <scrollbox flexGrow={1}>
               {files.map((f) => (
-                <text key={f} fg="#6c7086" paddingLeft={1}>
+                <text key={f} fg="#cdd6f4" paddingLeft={1}>
                   {f}
                 </text>
               ))}
@@ -70,8 +70,8 @@ export function CommitPrompt({ filename, files, isDirectory, onCommit, onCancel 
           />
         </box>
       </box>
-      <text fg="#6c7086" marginTop={1}>
-        Enter to commit and push  |  Escape to cancel
+      <text marginTop={1}>
+        <span fg="#a6e3a1">Enter</span><span fg="#6c7086"> to commit and push  |  </span><span fg="#f38ba8">Escape</span><span fg="#6c7086"> to cancel</span>
       </text>
     </box>
   );
